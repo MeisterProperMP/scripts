@@ -1,0 +1,9 @@
+# copy this in .bashrc in the users-dir
+# This starts ssh-agent and loads all ssh-keys
+
+eval "$(ssh-agent -s)"
+for key in ~/.ssh/*; do
+  if [[ -f "$key" && "$key" != *.pub ]]; then
+    ssh-add "$key" 2>/dev/null
+  fi
+done
