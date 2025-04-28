@@ -1,0 +1,54 @@
+## Creates a vm from cloudInit-template
+## Login from proxmox with static IP
+## Install qemu-agent
+## run cloudInit clean
+## stop vm and create template
+
+#!/bin/bash
+
+# Konfiguration
+TEMPLATE_ID=9000           # Die Template-ID
+NEW_VM_ID=100              # Neue VM-ID (muss frei sein)
+NEW_VM_NAME="meine-vm"     # Name der neuen VM
+STORAGE="local-lvm"        # Storage für die Disks
+CIUSER="ubuntu"            # Benutzername in der VM
+SSH_KEY_PATH="$HOME/.ssh/id_rsa.pub"
+BRIDGE="vmbr0"             # Dein Netzwerk-Bridge-Interface
+STATIC_IP="192.168.2.53/24" # IP-Adresse + Subnetz
+GATEWAY="192.168.2.1"      # Dein Standardgateway
+
+# Farben für bessere Übersicht
+GREEN='\033[0;32m'
+NC='\033[0m' # No Color
+
+echo -e "${GREEN}Starte Klonen der VM...${NC}"
+
+# Prüfen ob SSH-Key existiert
+if [ ! -f "$SSH_KEY_PATH" ]; then
+    echo "SSH-Key nicht gefunden unter $SSH_KEY_PATH"
+    exit 1
+fi
+
+# Alte VM löschen falls vorhanden
+if qm status $NEW_VM_ID &> /dev/null; then
+    echo "Alte VM mit ID $NEW_VM_ID existiert. Lösche..."
+    qm destroy $NEW_VM_ID --purge
+fi
+
+# Klonen der VM
+echo "Klonen der Template-VM $TEMPLATE_ID nach neuer VM $NEW_VM_ID..."
+qm clone $TEMPLATE_ID $NEW_VM_ID --name $NEW_VM_NAME --full true
+
+# Cloud-Init Einstellungen setzen
+echo "Setze Cloud-Init Konfiguration..."
+qm set $NEW_VM_ID \
+    --ciuser $CIUSER \
+    --sshkey "$SSH_KEY_PATH" \
+    --ipconfig0 ip=$STATIC_IP,gw=$GATEWAY \
+    --net0 virtio,bridge=$BRIDGE
+
+# Start der neuen VM
+echo "Starte die neue VM..."
+qm start $NEW_VM_ID
+
+echo -e "${GREEN}VM $NEW_VM_NAME ($NEW_VM_ID) wurde erfolgreich erstellt und gestartet!${NC}"

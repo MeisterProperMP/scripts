@@ -1,0 +1,2 @@
+# creates a new ssh.key with the given name "rr_priv"
+ssh-keygen -t rsa -b 4096 -C "" -f ~/.ssh/rr_priv

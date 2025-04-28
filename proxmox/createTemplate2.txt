@@ -1,0 +1,98 @@
+#!/bin/bash
+
+# Konfiguration
+VMID=9000
+VMNAME="ubuntu-cloud-template"
+STORAGE="local-lvm"  # Storage für die Disks
+ISO_STORAGE="local"  # Storage für Templates/ISO-Images
+BRIDGE="vmbr0"
+MEMORY=2048  # MB
+CORES=2
+DISK_SIZE=8G
+CIUSER="ubuntu"
+SSH_KEY_PATH="$HOME/rr_key.pub"
+CLOUD_IMAGE_URL="https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
+CLOUD_IMAGE_NAME="jammy-server-cloudimg-amd64.img"
+IMAGE_PATH="/var/lib/vz/template/iso/$CLOUD_IMAGE_NAME"
+
+# Farben für bessere Übersicht
+GREEN='\033[0;32m'
+NC='\033[0m' # No Color
+
+echo -e "${GREEN}Starte Erstellung des Proxmox Cloud-Init Templates...${NC}"
+
+# Prüfen ob SSH-Key existiert
+if [ ! -f "$SSH_KEY_PATH" ]; then
+    echo "SSH-Key nicht gefunden unter $SSH_KEY_PATH"
+    exit 1
+fi
+
+# ISO-Verzeichnis sicherstellen
+if [ ! -d "/var/lib/vz/template/iso" ]; then
+    mkdir -p /var/lib/vz/template/iso
+fi
+
+# Image herunterladen falls noch nicht vorhanden
+if [ ! -f "$IMAGE_PATH" ]; then
+    echo "Cloud-Image nicht vorhanden. Lade herunter..."
+    wget -O "$IMAGE_PATH" "$CLOUD_IMAGE_URL"
+else
+    echo "Cloud-Image bereits vorhanden. Überspringe Download."
+fi
+
+# Alte Template-VM löschen falls vorhanden
+if qm status $VMID &> /dev/null; then
+    echo "Alte Template-VM mit ID $VMID existiert. Lösche..."
+    qm destroy $VMID --purge
+fi
+
+# Neue VM erstellen
+echo "Erstelle neue Template-VM..."
+qm create $VMID \
+    --name $VMNAME \
+    --memory $MEMORY \
+    --cores $CORES \
+    --net0 virtio,bridge=$BRIDGE \
+    --serial0 socket \
+    --vga serial0
+
+# Disk importieren
+echo "Importiere Cloud-Image als Disk..."
+qm importdisk $VMID "$IMAGE_PATH" "$STORAGE"
+
+# Disk anhängen
+echo "Hänge importierte Disk an VM..."
+qm set $VMID \
+    --scsihw virtio-scsi-pci \
+    --scsi0 $STORAGE:vm-${VMID}-disk-0
+
+# Boot-Device setzen
+echo "Setze Boot-Device auf scsi0..."
+qm set $VMID \
+    --boot c \
+    --bootdisk scsi0
+
+# Cloud-Init Laufwerk hinzufügen
+echo "Füge Cloud-Init Laufwerk hinzu..."
+qm set $VMID \
+    --ide2 $STORAGE:cloudinit
+
+# SSH-Key setzen
+echo "Binde SSH-Key ein..."
+qm set $VMID \
+    --sshkey "$SSH_KEY_PATH"
+
+# Cloud-Init Benutzer konfigurieren
+echo "Setze Cloud-Init Benutzer auf $CIUSER..."
+qm set $VMID \
+    --ciuser $CIUSER
+
+# Disk-Größe anpassen
+echo "Erweitere Disk auf $DISK_SIZE..."
+qm resize $VMID scsi0 $DISK_SIZE
+
+# Als Template markieren
+echo "Konvertiere VM in ein Template..."
+qm template $VMID
+
+echo -e "${GREEN}Template $VMNAME mit VMID $VMID erfolgreich erstellt!${NC}"

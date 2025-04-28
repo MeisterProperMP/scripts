@@ -1,0 +1,9 @@
+# Clones a vm from a cloudInit - template
+# You can set a hostname, ip and user + sshkey
+
+qm clone 9100 101 --name meine-neue-vm1 --storage zfs_vm_volume
+qm set 101 --sshkey ./rr_key.pub
+qm set 101 --ciuser ubuntu
+qm set 101 --cipassword ubuntu
+qm set 101 --ipconfig0 ip=192.168.2.30/24,gw=192.168.1.1
+qm start 101 
